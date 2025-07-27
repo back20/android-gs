@@ -1,8 +1,33 @@
+name: '使用 Buildozer 构建 Android APK'
+
+on:
+  workflow_dispatch:  # 支持手动触发
+
 jobs:
   build:
-    runs-on: ubuntu-22.04  # 使用稳定版环境，避免兼容性问题
+    name: 构建 APK
+    runs-on: ubuntu-22.04  # 使用更稳定的 Ubuntu 版本，避免兼容性问题
+
     steps:
-      - name: 安装系统依赖和 Buildozer
+      - name: 📦 检出代码仓库
+        uses: actions/checkout@v2
+
+      - name: 🐍 设置 Python 环境
+        uses: actions/setup-python@v5
+        with:
+          architecture: x64
+          python-version: 3.8  # 可根据项目需要调整
+
+      - name: ☕ 安装 Java 17（Gradle 所需）
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: 🧭 设置 JAVA_HOME 环境变量
+        run: echo "JAVA_HOME=$JAVA_HOME" >> $GITHUB_ENV
+
+      - name: 🛠️ 安装系统依赖项 + Buildozer
         run: |
           sudo apt update
           sudo apt install -y git \
@@ -16,10 +41,39 @@ jobs:
             zlib1g-dev \
             libncurses5-dev \
             libncursesw5-dev \
+            libtinfo6 \  # 替代 libtinfo5，适配 Ubuntu 22.04+
             cmake \
             libffi-dev \
-            libssl-dev \
-            libtinfo6
+            libssl-dev
+          python3 -m pip install --upgrade pip
           python3 -m pip install --upgrade \
             Cython==0.29.33 \
             buildozer
+
+      - name: 📦 安装 Python 依赖（如果存在 requirements.txt）
+        run: |
+          if [ -f requirements.txt ]; then
+            python3 -m pip install -r requirements.txt
+          fi
+
+      - name: 💾 缓存 Buildozer 和 Gradle 构建目录
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.buildozer
+            ~/.gradle
+          key: ${{ runner.os }}-buildozer-${{ hashFiles('**/*.py') }}
+          restore-keys: |
+            ${{ runner.os }}-buildozer-
+
+      - name: 🔨 使用 Buildozer 构建 APK
+        run: |
+          buildozer android debug
+
+      # （可选）上传 APK 到 GitHub Actions 的构建产物
+      - name: 📤 上传 APK 文件
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: bin/*.apk
