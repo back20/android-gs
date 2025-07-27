@@ -40,12 +40,18 @@ jobs:
       with:
         python-version: '3.10'
 
+    - name: 定义系统依赖
+      id: define-dependencies
+      run: |
+        echo "dependencies=build-essential ccache git zip unzip openjdk-17-jdk autoconf automake libtool pkg-config" >> $GITHUB_OUTPUT
+
+    - name: 安装系统依赖
+      run: |
+        sudo apt update || { echo "更新 APT 源失败"; exit 1; }
+        sudo apt install -y ${{ steps.define-dependencies.outputs.dependencies }} || { echo "安装系统依赖失败"; exit 1; }
+
     - name: 安装 Buildozer 和构建工具依赖
       run: |
-        sudo apt update
-        # 安装特定版本的 libtool 以确保兼容性
-        sudo apt install -y build-essential ccache git zip unzip openjdk-17-jdk \
-          autoconf automake libtool=2.4.6-15 pkg-config
         pip install --upgrade pip
         pip install buildozer cython
 
@@ -55,35 +61,13 @@ jobs:
         echo "Found libffi dir: $LIBFFI_DIR"
         if [ -d "$LIBFFI_DIR" ]; then
           cd "$LIBFFI_DIR"
-          # 清理现有生成的文件
-          if [ -f Makefile.in ]; then
-            make maintainer-clean || true
-          fi
-          rm -rf autom4te.cache
-          # 重新生成 configure 文件 (确保正确顺序)
           libtoolize --force --copy
-          aclocal -I m4 -I /usr/share/aclocal
-          autoheader
+          aclocal -I m4
+          autoheader || true
           automake --add-missing --foreign
-          autoreconf -ivf
+          autoconf
         else
           echo "libffi 目录未找到，跳过 autotools 初始化"
-        fi
-
-    - name: 修复 libffi 宏定义问题
-      run: |
-        LIBFFI_DIR=$(find .buildozer/android/platform/build-* -type d -path "*/libffi/*/libffi" | head -n 1)
-        echo "Found libffi dir: $LIBFFI_DIR"
-        if [ -d "$LIBFFI_DIR" ]; then
-          cd "$LIBFFI_DIR"
-          # 在 configure.ac 中添加对 LT_SYS_SYMBOL_USCORE 的定义
-          if ! grep -q "LT_SYS_SYMBOL_USCORE" configure.ac; then
-            echo 'm4_define([LT_SYS_SYMBOL_USCORE], [dnl])' >> m4/libtool.m4
-          fi
-          # 重新生成 configure 文件
-          autoreconf -ivf
-        else
-          echo "libffi 目录未找到，跳过修复"
         fi
 
     - name: 解码 Keystore（用于签名）
@@ -95,25 +79,7 @@ jobs:
       env:
         KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-      run: buildozer android release || (touch build_error.log && buildozer android release &> build_error.log; exit 1)
-
-    - name: 检查是否有错误日志
-      id: check_log
-      run: |
-        if [ -f "build_error.log" ]; then
-          echo "has_error_log=true" >> $GITHUB_OUTPUT
-        else
-          echo "has_error_log=false" >> $GITHUB_OUTPUT
-        fi
-
-    - name: 提交错误日志到 main 分支
-      if: steps.check_log.outputs.has_error_log == 'true'
-      run: |
-        git config --global user.name "GitHub Actions"
-        git config --global user.email "actions@github.com"
-        git add build_error.log
-        git commit -m "Add build error log"
-        git push origin main
+      run: buildozer android release
 
     - name: 上传已签名 APK
       uses: actions/upload-artifact@v4
