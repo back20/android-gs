@@ -23,12 +23,12 @@ android.permissions = WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE
 # Android 构建配置
 android.api = 33
 android.minapi = 29
-android.ndk = 21b
+android.ndk = 25b
 android.enable_legacy_storage = 1
 
 # SDK/NDK 路径（GitHub Actions 使用）
-# android.sdk_path = /home/runner/android-sdk
-# android.ndk_path = /home/runner/android-sdk/ndk/21.4.7075529
+android.sdk_path = /usr/local/lib/android/sdk
+android.ndk_path = /usr/local/lib/android/sdk/ndk/25.1.8937393
 
 # 日志等级（0-2，2为详细）
 log_level = 2
