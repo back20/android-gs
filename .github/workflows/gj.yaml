@@ -21,16 +21,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
-      # 核心环境变量配置
       ANDROID_HOME: /home/runner/android-sdk
       ANDROID_NDK_VERSION: 25.1.8937393
       PYTHON_VERSION: '3.9'
       ERROR_LOG: ./build_error.log
-      # 应用基础信息（可根据实际情况修改）
       APP_TITLE: "工时价格Excel生成器"
       PACKAGE_NAME: "gzexcel"
       PACKAGE_DOMAIN: "com.example"
-      MAIN_PY_FILE: "gz.py"  # 主程序入口文件
+      MAIN_PY_FILE: "gz.py"
 
     steps:
     - name: 1. 检出代码
@@ -43,8 +41,6 @@ jobs:
           automake libtool autoconf pkg-config build-essential \
           libopenblas-dev liblapack-dev gfortran \
           libssl-dev libffi-dev
-        # 记录已安装依赖
-        dpkg -l | grep -E 'automake|libtool|autoconf|build-essential' > $ERROR_LOG 2>&1
 
     - name: 3. 设置Python环境
       uses: actions/setup-python@v5
@@ -60,18 +56,11 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install --upgrade buildozer cython
-        # 记录工具版本
-        echo "===== 工具版本信息 =====" >> $ERROR_LOG
-        pip list | grep -E 'buildozer|cython' >> $ERROR_LOG 2>&1
-        buildozer --version >> $ERROR_LOG 2>&1
 
-    - name: 6. 创建必要目录并授权
+    - name: 6. 创建目录并授权
       run: |
         mkdir -p .buildozer/android/app ~/.buildozer/android/platform/
         chmod -R 777 .buildozer ~/.buildozer
-        # 验证目录权限
-        echo "===== 目录权限验证 =====" >> $ERROR_LOG
-        ls -la .buildozer/android/ >> $ERROR_LOG 2>&1
 
     - name: 7. 配置Java环境
       uses: actions/setup-java@v4
@@ -90,28 +79,39 @@ jobs:
           "build-tools;33.0.2" \
           "platforms;android-33" \
           "ndk;${{ env.ANDROID_NDK_VERSION }}"
-        # 接受许可证
         yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
 
-    - name: 10. 配置Buildozer路径映射
+    - name: 10. 配置Buildozer路径映射（修复符号链接）
       run: |
-        # 建立符号链接，确保Buildozer能找到SDK
-        ln -s $ANDROID_HOME ~/.buildozer/android/platform/android-sdk
-        ln -s $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
-              ~/.buildozer/android/platform/android-sdk/tools/bin/sdkmanager
-        # 验证链接
-        echo "===== SDK路径验证 =====" >> $ERROR_LOG
-        ls -la ~/.buildozer/android/platform/android-sdk/tools/bin/ >> $ERROR_LOG 2>&1
+        # 确保目标目录存在
+        mkdir -p ~/.buildozer/android/platform/android-sdk/tools/bin/
+        
+        # 创建SDK符号链接
+        ln -sfn $ANDROID_HOME ~/.buildozer/android/platform/android-sdk
+        
+        # 创建sdkmanager命令链接（兼容不同SDK版本结构）
+        if [ -f "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
+          ln -sfn $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
+                ~/.buildozer/android/platform/android-sdk/tools/bin/sdkmanager
+        elif [ -f "$ANDROID_HOME/tools/bin/sdkmanager" ]; then
+          ln -sfn $ANDROID_HOME/tools/bin/sdkmanager \
+                ~/.buildozer/android/platform/android-sdk/tools/bin/sdkmanager
+        else
+          echo "找不到sdkmanager命令" >> $ERROR_LOG
+          exit 1
+        fi
+        
+        # 验证配置
+        echo "===== SDK配置验证 =====" >> $ERROR_LOG
+        ls -la ~/.buildozer/android/platform/android-sdk/tools/bin/ >> $ERROR_LOG
+        ~/.buildozer/android/platform/android-sdk/tools/bin/sdkmanager --version >> $ERROR_LOG 2>&1
 
     - name: 11. 生成并配置buildozer.spec
       run: |
-        # 初始化配置文件（如果不存在）
         if [ ! -f buildozer.spec ]; then
           buildozer init
-          echo "===== 初始化buildozer.spec =====" >> $ERROR_LOG
         fi
         
-        # 核心配置（修复sed命令语法）
         sed -i -e "s/title = My Application/title = $APP_TITLE/" \
                -e "s/package.name = myapp/package.name = $PACKAGE_NAME/" \
                -e "s/package.domain = org.test/package.domain = $PACKAGE_DOMAIN/" \
@@ -119,14 +119,12 @@ jobs:
                -e "s/version = 1.0/version = 1.0.0/" \
                buildozer.spec
         
-        # 依赖和Android配置
         echo "requirements = python3,kivy==2.1.0,kivymd==0.104.2,pandas==1.5.3,openpyxl==3.1.2,numpy==1.24.3" >> buildozer.spec
         echo "android.build_tools_version = 33.0.2" >> buildozer.spec
         echo "android.ndk_version = $ANDROID_NDK_VERSION" >> buildozer.spec
         echo "android.archs = arm64-v8a,armeabi-v7a" >> buildozer.spec
         echo "source.dir = ." >> buildozer.spec
         
-        # 发布版签名配置
         if [ "${{ github.event.inputs.release_type }}" == "release" ]; then
           sed -i '/android.permissions =/c\android.permissions = INTERNET, WRITE_EXTERNAL_STORAGE, READ_EXTERNAL_STORAGE' buildozer.spec
           echo "android.keystore = True" >> buildozer.spec
@@ -134,10 +132,6 @@ jobs:
           echo "android.keystore.alias = \$ENV{KEY_ALIAS}" >> buildozer.spec
           echo "android.keystore.alias.password = \$ENV{KEY_PASSWORD}" >> buildozer.spec
         fi
-        
-        # 记录最终配置
-        echo "===== 最终buildozer.spec配置 =====" >> $ERROR_LOG
-        cat buildozer.spec >> $ERROR_LOG 2>&1
 
     - name: 12. 执行APK构建
       env:
@@ -149,32 +143,35 @@ jobs:
         touch $ERROR_LOG
         echo "===== 开始构建${{ github.event.inputs.release_type }}版本 =====" >> $ERROR_LOG
         
-        # 处理发布版签名
-        if [ "${{ github.event.inputs.release_type }}" == "release" ] && [ -n "$KEYSTORE_BASE64" ]; then
-          echo "$KEYSTORE_BASE64" | base64 -d > release.keystore 2>> $ERROR_LOG
-          mv release.keystore ~/.buildozer/android/platform/ 2>> $ERROR_LOG
+        if [ "${{ github.event.inputs.release_type }}" == "release" ]; then
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "发布版缺少签名密钥" >> $ERROR_LOG
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > release.keystore
+          mv release.keystore ~/.buildozer/android/platform/
         fi
         
-        # 执行构建（命令格式：buildozer [全局参数] <目标> <命令> [参数]）
-        buildozer --verbose android ${{ github.event.inputs.release_type }} --log_level=2 2>&1 | tee -a $ERROR_LOG || (
+        buildozer android ${{ github.event.inputs.release_type }} --verbose --log_level=2 2>&1 | tee -a $ERROR_LOG || {
           echo "===== 构建失败 =====" >> $ERROR_LOG
           exit 1
-        )
+        }
 
-    - name: 13. 收集错误信息（构建失败时）
+    - name: 13. 构建失败时收集详细信息
       if: failure()
       run: |
         echo "===== 环境变量 =====" >> $ERROR_LOG
-        env >> $ERROR_LOG
+        env | grep -E 'ANDROID|JAVA|PYTHON' >> $ERROR_LOG
         echo "===== 系统信息 =====" >> $ERROR_LOG
         uname -a >> $ERROR_LOG
         java -version 2>> $ERROR_LOG
         python --version >> $ERROR_LOG
+        buildozer --version >> $ERROR_LOG
 
     - name: 14. 上传构建产物
       uses: actions/upload-artifact@v4
       with:
-        name: ${{ env.APP_TITLE }}_v1.0.0_${{ github.sha }}_${{ github.event.inputs.release_type }}
+        name: ${{ env.APP_TITLE }}_${{ github.event.inputs.release_type }}
         path: |
           ${{ env.ERROR_LOG }}
           bin/*-${{ github.event.inputs.release_type }}.apk
