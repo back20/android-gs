@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      ANDROID_SDK_ROOT: ${{ runner.workspace }}/android-sdk
+      ANDROID_SDK_ROOT: $HOME/android-sdk
 
     steps:
     - name: 拉取仓库代码
