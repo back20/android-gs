@@ -16,3 +16,6 @@ android.ndk = 25b
 android.api = 33
 android.enable_legacy_storage = 1
 log_level = 2
+android.sdk_path = $HOME/android-sdk
+android.ndk_path = $HOME/android-sdk/ndk
+android.accept_sdk_license = True
