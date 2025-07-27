@@ -12,6 +12,9 @@ jobs:
   build-apk:
     runs-on: ubuntu-latest
 
+    env:
+      ANDROID_SDK_ROOT: ${{ runner.workspace }}/android-sdk
+
     steps:
     - name: 拉取仓库代码
       uses: actions/checkout@v3
@@ -21,10 +24,35 @@ jobs:
       with:
         python-version: '3.10'
 
-    - name: 安装系统依赖和 Buildozer
+    - name: 安装系统依赖和 wget unzip openjdk
       run: |
         sudo apt update
-        sudo apt install -y zip unzip openjdk-17-jdk ccache build-essential libffi-dev libssl-dev
+        sudo apt install -y zip unzip openjdk-17-jdk ccache build-essential libffi-dev libssl-dev wget
+
+    - name: 安装 Android cmdline-tools
+      run: |
+        mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
+        cd $ANDROID_SDK_ROOT/cmdline-tools
+        wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline-tools.zip
+        unzip cmdline-tools.zip
+        rm cmdline-tools.zip
+        mv cmdline-tools latest
+      shell: bash
+
+    - name: 配置环境变量
+      run: |
+        echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+        echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
+        echo "$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
+
+    - name: 安装 Android SDK 组件 (build-tools/platforms/platform-tools)
+      run: |
+        yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT --licenses
+        $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT \
+          "platform-tools" "platforms;android-33" "build-tools;33.0.0"
+
+    - name: 安装 Buildozer 和 Python 依赖
+      run: |
         pip install --upgrade pip
         pip install buildozer cython
 
@@ -37,7 +65,6 @@ jobs:
       run: |
         cat buildozer.spec || echo "未找到 buildozer.spec"
 
-    # 这里注释掉初始化 buildozer，避免冲突
     - name: 跳过 buildozer 初始化（已存在配置文件）
       run: echo "buildozer.spec 已存在，跳过初始化"
 
