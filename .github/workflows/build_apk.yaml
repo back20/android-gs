@@ -1,4 +1,4 @@
-name: 制作APK
+name: Build APK
 
 on:
   workflow_dispatch:
@@ -37,9 +37,9 @@ jobs:
       run: |
         cat buildozer.spec || echo "未找到 buildozer.spec"
 
-    - name: 初始化 buildozer
-      run: |
-        buildozer init || true
+    # 这里注释掉初始化 buildozer，避免冲突
+    - name: 跳过 buildozer 初始化（已存在配置文件）
+      run: echo "buildozer.spec 已存在，跳过初始化"
 
     - name: 执行 Buildozer 构建
       run: |
@@ -52,7 +52,6 @@ jobs:
         path: bin/*.apk
 
     - name: 上传构建日志（如果存在）
-      if: failure() || always()
       uses: actions/upload-artifact@v4
       with:
         name: build_logs
