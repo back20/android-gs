@@ -10,7 +10,7 @@ on:
       release_type:
         description: '构建类型'
         required: true
-        default: 'release'
+        default: 'debug'
         type: choice
         options:
           - debug
@@ -22,17 +22,17 @@ jobs:
     timeout-minutes: 60
 
     steps:
-    - name: 步骤 1/10 - 检出代码
+    - name: 步骤 1/11 - 检出代码
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
 
-    - name: 步骤 2/10 - 设置 Python
+    - name: 步骤 2/11 - 设置 Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.9'
 
-    - name: 步骤 3/10 - 缓存依赖
+    - name: 步骤 3/11 - 缓存依赖
       uses: actions/cache@v4
       with:
         path: |
@@ -42,21 +42,21 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-buildozer-
 
-    - name: 步骤 4/10 - 安装 Buildozer
+    - name: 步骤 4/11 - 安装 Buildozer
       run: |
         python -m pip install --upgrade pip
         pip install buildozer cython
 
-    - name: 步骤 5/10 - 设置 Java
+    - name: 步骤 5/11 - 设置 Java
       uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
         java-version: '17'
 
-    - name: 步骤 6/10 - 安装 Android SDK
+    - name: 步骤 6/11 - 安装 Android SDK
       uses: malinskiy/action-android/install-sdk@release/0.1.6
 
-    - name: 步骤 7/10 - 安装必要的 Android 构建工具
+    - name: 步骤 7/11 - 安装必要的 Android 构建工具
       run: |
         # 安装最新的 build-tools 和平台
         echo "安装 build-tools 和平台..."
@@ -68,19 +68,17 @@ jobs:
         echo "接受 Android SDK 许可证..."
         yes | /home/runner/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses
 
-    - name: 步骤 8/10 - 配置 Buildozer 环境变量
+    - name: 步骤 8/11 - 创建符号链接以匹配 Buildozer 期望的路径
       run: |
-        # 创建 Buildozer 配置目录
-        mkdir -p ~/.buildozer/android
+        # 创建 Buildozer 期望的 SDK 目录结构
+        mkdir -p /home/runner/.buildozer/android/platform/
+        ln -s /home/runner/android-sdk /home/runner/.buildozer/android/platform/android-sdk
         
-        # 创建 local.properties 文件指定 SDK 路径
-        echo "sdk.dir=/home/runner/android-sdk" > ~/.buildozer/android/local.properties
-        
-        # 打印配置信息用于调试
-        echo "Buildozer 配置文件内容:"
-        cat ~/.buildozer/android/local.properties
+        # 验证符号链接
+        echo "符号链接验证:"
+        ls -la /home/runner/.buildozer/android/platform/
 
-    - name: 步骤 9/10 - 配置 Buildozer.spec
+    - name: 步骤 9/11 - 配置 Buildozer.spec
       run: |
         if [ ! -f buildozer.spec ]; then
           buildozer init
@@ -92,6 +90,9 @@ jobs:
         sed -i 's/package.domain = org.test/package.domain = com.example/g' buildozer.spec
         sed -i 's/requirements = python3,kivy/requirements = python3,kivy,kivymd,pandas,openpyxl/g' buildozer.spec
         sed -i 's/source.main = main.py/source.main = gz.py/g' buildozer.spec
+        
+        # 明确指定 build-tools 版本
+        echo "android.build_tools_version = 33.0.2" >> buildozer.spec
         
         # 根据构建类型调整配置
         if [ "${{ github.event.inputs.release_type }}" == "release" ]; then
@@ -105,13 +106,14 @@ jobs:
           echo "配置调试版本构建..."
         fi
 
-    - name: 步骤 10/10 - 构建 APK
+    - name: 步骤 10/11 - 构建 APK
       env:
         KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         ANDROID_SDK_ROOT: /home/runner/android-sdk  # 明确设置 SDK 路径
+        BUILDTOOLS_VERSION: 33.0.2  # 指定 build-tools 版本
       run: |
         # 打印环境变量和目录结构用于调试
         echo "===== 环境变量 ====="
@@ -125,8 +127,16 @@ jobs:
         echo "build-tools 目录内容:"
         ls -la $ANDROID_SDK_ROOT/build-tools
         
-        echo "build-tools 版本列表:"
-        ls -la $ANDROID_SDK_ROOT/build-tools
+        echo "build-tools;33.0.2 目录内容:"
+        ls -la $ANDROID_SDK_ROOT/build-tools/33.0.2
+        
+        # 验证 aidl 工具是否存在
+        echo "===== aidl 工具验证 ====="
+        if [ -f "$ANDROID_SDK_ROOT/build-tools/33.0.2/aidl" ]; then
+          echo "aidl 工具存在"
+        else
+          echo "aidl 工具不存在，构建可能失败"
+        fi
         
         # 准备签名密钥（仅发布版本需要）
         if [ "${{ github.event.inputs.release_type }}" == "release" ]; then
