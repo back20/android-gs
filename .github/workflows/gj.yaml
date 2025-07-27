@@ -1,4 +1,4 @@
-name: Build APK
+name: Build Android APK
 
 on:
   push:
@@ -10,7 +10,7 @@ on:
       release_type:
         description: '构建类型'
         required: true
-        default: 'debug'
+        default: 'release'
         type: choice
         options:
           - debug
@@ -19,81 +19,84 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 120  # 进一步延长超时时间
+    timeout-minutes: 120
+    env:
+      ANDROID_HOME: /home/runner/android-sdk
+      ANDROID_SDK_ROOT: /home/runner/android-sdk
+      ANDROID_NDK_HOME: /home/runner/android-sdk/ndk/25.1.8937393
+      GRADLE_OPTS: "-Xmx6g -Xms2g"
+      PYTHON_VERSION: '3.9'
 
     steps:
-    - name: 步骤 1/14 - 检出代码
+    - name: 检出代码
       uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
 
-    - name: 步骤 2/14 - 安装系统依赖（补充数据科学库依赖）
+    - name: 安装系统依赖
       run: |
-        sudo apt-get update
-        # 基础编译工具
-        sudo apt-get install -y automake libtool autoconf pkg-config build-essential
-        # 数据科学库（pandas/openpyxl）编译依赖
-        sudo apt-get install -y libopenblas-dev liblapack-dev gfortran  # pandas依赖的线性代数库
-        sudo apt-get install -y libssl-dev libffi-dev  # 加密相关依赖
+        sudo apt-get update -y
+        sudo apt-get install -y \
+          automake libtool autoconf pkg-config build-essential \
+          libopenblas-dev liblapack-dev gfortran \
+          libssl-dev libffi-dev
 
-    - name: 步骤 3/14 - 设置 Python
+    - name: 设置 Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.9'
+        python-version: ${{ env.PYTHON_VERSION }}
 
-    - name: 步骤 4/14 - 清理旧缓存（关键：解决缓存损坏问题）
+    - name: 清理并缓存依赖
       run: |
-        rm -rf ~/.buildozer
-        rm -rf ~/.cache/pip
-        rm -rf .buildozer  # 项目本地缓存
+        rm -rf ~/.buildozer ~/.cache/pip .buildozer
+      continue-on-error: true
 
-    - name: 步骤 5/14 - 升级Buildozer和工具链（解决版本兼容问题）
+    - name: 安装 Buildozer
       run: |
         python -m pip install --upgrade pip
-        # 安装最新版Buildozer和pythonforandroid（核心工具链）
-        pip install --upgrade buildozer cython pythonforandroid
+        pip install --upgrade buildozer cython
 
-    - name: 步骤 6/14 - 设置 Java
+    - name: 设置 Java
       uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
         java-version: '17'
 
-    - name: 步骤 7/14 - 安装 Android SDK + 适配NDK版本
+    - name: 安装 Android SDK 和 NDK
       uses: malinskiy/action-android/install-sdk@release/0.1.6
       with:
-        # 明确指定NDK版本（选择与pythonforandroid兼容的25.1版本）
         ndk: '25.1.8937393'
 
-    - name: 步骤 8/14 - 安装Android构建工具（匹配NDK）
+    - name: 安装 Android 构建工具
       run: |
-        /home/runner/android-sdk/cmdline-tools/latest/bin/sdkmanager "build-tools;33.0.2"
-        /home/runner/android-sdk/cmdline-tools/latest/bin/sdkmanager "platforms;android-33"
-        /home/runner/android-sdk/cmdline-tools/latest/bin/sdkmanager "ndk;25.1.8937393"  # 与步骤7保持一致
-        yes | /home/runner/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses
+        $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "build-tools;33.0.2"
+        $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-33"
+        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
 
-    - name: 步骤 9/14 - 修复路径映射
+    - name: 配置 Buildozer 路径
       run: |
-        mkdir -p /home/runner/.buildozer/android/platform/
-        ln -s /home/runner/android-sdk /home/runner/.buildozer/android/platform/android-sdk
-        mkdir -p /home/runner/.buildozer/android/platform/android-sdk/tools/bin/
-        ln -s /home/runner/android-sdk/cmdline-tools/latest/bin/sdkmanager /home/runner/.buildozer/android/platform/android-sdk/tools/bin/sdkmanager
+        mkdir -p ~/.buildozer/android/platform/
+        ln -s $ANDROID_HOME ~/.buildozer/android/platform/android-sdk
+        mkdir -p ~/.buildozer/android/platform/android-sdk/tools/bin/
+        ln -s $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager ~/.buildozer/android/platform/android-sdk/tools/bin/sdkmanager
 
-    - name: 步骤 10/14 - 配置Buildozer.spec（优化依赖）
+    - name: 配置项目规格
       run: |
         if [ ! -f buildozer.spec ]; then
           buildozer init
         fi
         
-        # 基础配置
-        sed -i 's/title = My Application/title = 工时价格Excel生成器/g' buildozer.spec
-        sed -i 's/package.name = myapp/package.name = gzexcel/g' buildozer.spec
-        sed -i 's/package.domain = org.test/package.domain = com.example/g' buildozer.spec
-        # 优化依赖：指定pandas和openpyxl的兼容版本
-        sed -i 's/requirements = python3,kivy/requirements = python3,kivy==2.1.0,kivymd==0.104.2,pandas==1.5.3,openpyxl==3.1.2,numpy==1.24.3/g' buildozer.spec
-        sed -i 's/source.main = main.py/source.main = gz.py/g' buildozer.spec
+        # 使用 sed 批量修改配置
+        sed -i -e 's/title = My Application/title = 工时价格Excel生成器/' \
+               -e 's/package.name = myapp/package.name = gzexcel/' \
+               -e 's/package.domain = org.test/package.domain = com.example/' \
+               -e 's/source.main = main.py/source.main = gz.py/' \
+               buildozer.spec
+        
+        # 设置依赖（使用兼容的稳定版本）
+        echo "requirements = python3,kivy==2.1.0,kivymd==0.104.2,pandas==1.5.3,openpyxl==3.1.2,numpy==1.24.3" >> buildozer.spec
+        
+        # Android 构建配置
         echo "android.build_tools_version = 33.0.2" >> buildozer.spec
-        echo "android.ndk_version = 25.1.8937393" >> buildozer.spec  # 强制指定NDK版本
+        echo "android.ndk_version = 25.1.8937393" >> buildozer.spec
         
         # 签名配置（发布版）
         if [ "${{ github.event.inputs.release_type }}" == "release" ]; then
@@ -104,44 +107,32 @@ jobs:
           echo "android.keystore.alias.password = \$ENV{KEY_PASSWORD}" >> buildozer.spec
         fi
 
-    - name: 步骤 11/14 - 设置环境变量（增强工具链识别）
-      run: |
-        echo "ANDROID_HOME=/home/runner/android-sdk" >> $GITHUB_ENV
-        echo "ANDROID_SDK_ROOT=/home/runner/android-sdk" >> $GITHUB_ENV
-        echo "ANDROID_NDK_HOME=/home/runner/android-sdk/ndk/25.1.8937393" >> $GITHUB_ENV  # 明确NDK路径
-        echo "PATH=$PATH:/home/runner/android-sdk/cmdline-tools/latest/bin:/home/runner/android-sdk/platform-tools" >> $GITHUB_ENV
-
-    - name: 步骤 12/14 - 构建APK（输出详细日志）
+    - name: 构建 APK
       env:
         KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
       run: |
-        export GRADLE_OPTS="-Xmx6g -Xms2g"  # 增加内存分配，避免编译OOM
-        # 关键：设置log_level=2输出详细日志，定位隐藏错误
+        # 准备签名密钥（发布版）
         if [ "${{ github.event.inputs.release_type }}" == "release" ]; then
           echo "$KEYSTORE_BASE64" | base64 -d > release.keystore
           mkdir -p ~/.buildozer/android/platform/
           mv release.keystore ~/.buildozer/android/platform/
-          buildozer -v android release --log_level=2
-        else
-          buildozer -v android debug --log_level=2
         fi
+        
+        # 执行构建（仅在失败时显示完整日志）
+        buildozer -v android ${{ github.event.inputs.release_type }} --log_level=2 || (
+          echo "构建失败，查看完整日志："
+          find .buildozer/android/platform/build-arm64-v8a_armeabi-v7a/logs/ -type f -exec cat {} \;
+          exit 1
+        )
 
-    - name: 步骤 13/14 - 上传详细日志（便于调试）
-      if: always()  # 即使失败也上传日志
-      uses: actions/upload-artifact@v4
-      with:
-        name: build-logs
-        path: |
-          .buildozer/android/platform/build-arm64-v8a_armeabi-v7a/logs/
-          buildozer.spec
-
-    - name: 步骤 14/14 - 上传APK产物
-      if: success()
+    - name: 上传构建产物
       uses: actions/upload-artifact@v4
       with:
         name: 工时价格Excel生成器_${{ github.sha }}
-        path: bin/*-${{ github.event.inputs.release_type }}.apk
+        path: |
+          bin/*-${{ github.event.inputs.release_type }}.apk
+          buildozer.spec
         retention-days: 30
