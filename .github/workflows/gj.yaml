@@ -65,7 +65,6 @@ jobs:
         mkdir -p /home/runner/work/android-gsjs/android-gsjs/.buildozer/android/app
         mkdir -p ~/.buildozer/android/platform/
         chmod -R 777 /home/runner/work/android-gsjs/android-gsjs/.buildozer
-        # 验证目录创建
         echo "===== 目录验证 =====" >> ${{ env.ERROR_LOG_PATH }}
         ls -laR /home/runner/work/android-gsjs/android-gsjs/.buildozer/ >> ${{ env.ERROR_LOG_PATH }} 2>&1
 
@@ -146,8 +145,8 @@ jobs:
         fi
         
         echo "===== 开始构建 =====" >> ${{ env.ERROR_LOG_PATH }}
-        # 移除错误的 -v 参数，仅保留 --log_level=2
-        buildozer android ${{ github.event.inputs.release_type }} --log_level=2 2>&1 | tee -a ${{ env.ERROR_LOG_PATH }} || (
+        # 明确指定 --verbose 参数位置，确保命令格式正确
+        buildozer --verbose android ${{ github.event.inputs.release_type }} --log_level=2 2>&1 | tee -a ${{ env.ERROR_LOG_PATH }} || (
           echo "===== 构建失败 =====" >> ${{ env.ERROR_LOG_PATH }}
           if [ -d ".buildozer" ]; then
             echo "===== Buildozer 临时文件 =====" >> ${{ env.ERROR_LOG_PATH }}
