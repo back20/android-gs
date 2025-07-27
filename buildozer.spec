@@ -24,6 +24,7 @@ android.permissions = WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE
 android.api = 33
 android.minapi = 29
 android.ndk = 25b
+android.archs = armeabi-v7a, arm64-v8a
 android.enable_legacy_storage = 1
 
 # 日志等级
