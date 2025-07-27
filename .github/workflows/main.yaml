@@ -43,8 +43,9 @@ jobs:
     - name: 安装 Buildozer 和构建工具依赖
       run: |
         sudo apt update
+        # 安装特定版本的 libtool 以确保兼容性
         sudo apt install -y build-essential ccache git zip unzip openjdk-17-jdk \
-          autoconf automake libtool pkg-config
+          autoconf automake libtool=2.4.6-15 pkg-config
         pip install --upgrade pip
         pip install buildozer cython
 
@@ -54,13 +55,35 @@ jobs:
         echo "Found libffi dir: $LIBFFI_DIR"
         if [ -d "$LIBFFI_DIR" ]; then
           cd "$LIBFFI_DIR"
+          # 清理现有生成的文件
+          if [ -f Makefile.in ]; then
+            make maintainer-clean || true
+          fi
+          rm -rf autom4te.cache
+          # 重新生成 configure 文件 (确保正确顺序)
           libtoolize --force --copy
-          aclocal -I m4
-          autoheader || true
+          aclocal -I m4 -I /usr/share/aclocal
+          autoheader
           automake --add-missing --foreign
-          autoconf
+          autoreconf -ivf
         else
           echo "libffi 目录未找到，跳过 autotools 初始化"
+        fi
+
+    - name: 修复 libffi 宏定义问题
+      run: |
+        LIBFFI_DIR=$(find .buildozer/android/platform/build-* -type d -path "*/libffi/*/libffi" | head -n 1)
+        echo "Found libffi dir: $LIBFFI_DIR"
+        if [ -d "$LIBFFI_DIR" ]; then
+          cd "$LIBFFI_DIR"
+          # 在 configure.ac 中添加对 LT_SYS_SYMBOL_USCORE 的定义
+          if ! grep -q "LT_SYS_SYMBOL_USCORE" configure.ac; then
+            echo 'm4_define([LT_SYS_SYMBOL_USCORE], [dnl])' >> m4/libtool.m4
+          fi
+          # 重新生成 configure 文件
+          autoreconf -ivf
+        else
+          echo "libffi 目录未找到，跳过修复"
         fi
 
     - name: 解码 Keystore（用于签名）
