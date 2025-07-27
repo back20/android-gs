@@ -1,52 +1,40 @@
-name: Build Signed APK
-
-on:
-  workflow_dispatch:
-  push:
-    branches: [main]
-
 jobs:
   build:
     runs-on: ubuntu-latest
-
-    env:
-      ANDROID_SDK_ROOT: /home/runner/android-sdk
-      ANDROID_NDK_ROOT: /home/runner/android-sdk/ndk/21.4.7075529
-      KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-      KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-
     steps:
-    - name: 检出项目代码
-      uses: actions/checkout@v3
+    - uses: actions/checkout@v3
 
-    - name: 安装依赖（包括构建工具）
+    - name: Set up Android SDK
+      uses: android-actions/setup-android@v2
+      with:
+        api-level: 33
+        build-tools: 33.0.0
+        ndk-version: 21.4.7075529
+
+    - name: 安装 Python 和依赖
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: 安装 Buildozer
       run: |
         sudo apt update
-        sudo apt install -y build-essential ccache git zip unzip openjdk-17-jdk \
-          autoconf automake libtool pkg-config
+        sudo apt install -y build-essential ccache git zip unzip openjdk-17-jdk
         pip install --upgrade pip
         pip install buildozer cython
 
-    - name: 解码 Keystore（签名密钥）
-      run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > my-release-key.keystore
+    - name: 解码 Keystore
+      run: echo "$KEYSTORE_BASE64" | base64 --decode > my-release-key.keystore
+      env:
+        KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
 
-    - name: 验证 SDK 和 NDK 目录
-      run: |
-        echo "SDK Path: $ANDROID_SDK_ROOT"
-        ls -l $ANDROID_SDK_ROOT
-        echo "NDK Path: $ANDROID_NDK_ROOT"
-        ls -l $ANDROID_NDK_ROOT
+    - name: 构建 Release APK
+      env:
+        KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+      run: buildozer android release
 
-    - name: 构建 Release APK（自动签名）
-      run: |
-        buildozer android release \
-          --ndk $ANDROID_NDK_ROOT \
-          --keystore my-release-key.keystore \
-          --keystore-password $KEYSTORE_PASSWORD \
-          --keyalias WorkTimeKey \
-          --keyalias-password $KEY_PASSWORD
-
-    - name: 上传已签名 APK
+    - name: 上传 APK
       uses: actions/upload-artifact@v4
       with:
         name: signed-apk
