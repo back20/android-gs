@@ -48,19 +48,19 @@ jobs:
         pip install --upgrade pip
         pip install buildozer cython
 
-    - name: 初始化 autotools（修复 AC_ 系列宏错误）
+    - name: 初始化 libffi 的 autotools（修复宏错误）
       run: |
-        cd $GITHUB_WORKSPACE
-        if [ -f "configure.ac" ] || [ -f "configure.in" ]; then
-          echo "正在初始化 Autotools..."
-          libtoolize
-          aclocal
-          autoheader
-          automake --add-missing
+        LIBFFI_DIR=$(find .buildozer/android/platform/build-* -type d -path "*/libffi/*/libffi" | head -n 1)
+        echo "Found libffi dir: $LIBFFI_DIR"
+        if [ -d "$LIBFFI_DIR" ]; then
+          cd "$LIBFFI_DIR"
+          libtoolize --force --copy
+          aclocal -I m4
+          autoheader || true
+          automake --add-missing --foreign
           autoconf
-          autoupdate || true  # 某些宏可以不强制替换
         else
-          echo "跳过 autotools 初始化，未检测到 configure.ac"
+          echo "libffi 目录未找到，跳过 autotools 初始化"
         fi
 
     - name: 解码 Keystore（用于签名）
