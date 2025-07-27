@@ -40,12 +40,28 @@ jobs:
       with:
         python-version: '3.10'
 
-    - name: 安装 Buildozer 和依赖
+    - name: 安装 Buildozer 和构建工具依赖
       run: |
         sudo apt update
-        sudo apt install -y build-essential ccache git zip unzip openjdk-17-jdk
+        sudo apt install -y build-essential ccache git zip unzip openjdk-17-jdk \
+          autoconf automake libtool pkg-config
         pip install --upgrade pip
         pip install buildozer cython
+
+    - name: 初始化 autotools（修复 AC_ 系列宏错误）
+      run: |
+        cd $GITHUB_WORKSPACE
+        if [ -f "configure.ac" ] || [ -f "configure.in" ]; then
+          echo "正在初始化 Autotools..."
+          libtoolize
+          aclocal
+          autoheader
+          automake --add-missing
+          autoconf
+          autoupdate || true  # 某些宏可以不强制替换
+        else
+          echo "跳过 autotools 初始化，未检测到 configure.ac"
+        fi
 
     - name: 解码 Keystore（用于签名）
       run: echo "$KEYSTORE_BASE64" | base64 --decode > my-release-key.keystore
