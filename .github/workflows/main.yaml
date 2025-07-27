@@ -20,16 +20,22 @@ jobs:
         build-tools: 33.0.0
         ndk-version: 25.1.8937393
 
-    - name: 配置 Android SDK 环境变量（修复 sdkmanager 报错）
+    - name: 修复 sdkmanager 路径
       run: |
-        mkdir -p $ANDROID_HOME/cmdline-tools/latest
-        cp -r $ANDROID_HOME/cmdline-tools/* $ANDROID_HOME/cmdline-tools/latest/
-        echo "sdkmanager is at:"
+        if [ -d "$ANDROID_HOME/cmdline-tools/latest" ]; then
+          echo "latest 已存在，跳过复制"
+        else
+          TOOL_DIR=$(find "$ANDROID_HOME/cmdline-tools" -maxdepth 1 -mindepth 1 -type d ! -name "latest" | head -n 1)
+          echo "复制 $TOOL_DIR 到 latest/"
+          mkdir -p $ANDROID_HOME/cmdline-tools/latest
+          cp -r $TOOL_DIR/* $ANDROID_HOME/cmdline-tools/latest/
+        fi
+        echo "sdkmanager 路径:"
         find $ANDROID_HOME -name sdkmanager
       env:
         ANDROID_HOME: /usr/local/lib/android/sdk
 
-    - name: 安装 Python 和依赖
+    - name: 安装 Python 与依赖
       uses: actions/setup-python@v4
       with:
         python-version: '3.10'
@@ -41,12 +47,7 @@ jobs:
         pip install --upgrade pip
         pip install buildozer cython
 
-    - name: 验证 NDK 版本
-      run: |
-        echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME"
-        $ANDROID_NDK_HOME/ndk-build --version || echo "No ndk-build found"
-
-    - name: 解码 Keystore（签名密钥）
+    - name: 解码 Keystore（用于签名）
       run: echo "$KEYSTORE_BASE64" | base64 --decode > my-release-key.keystore
       env:
         KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
