@@ -1,0 +1,52 @@
+# 工作流程名称：构建 APK
+name: 构建 APK
+
+# 触发条件：支持手动触发（用户可选构建类型）
+on:
+  workflow_dispatch:
+    inputs:
+      build-type:
+        description: '构建类型（debug/release）'
+        required: true
+        default: 'release'  # 默认是调试版本
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest  # 使用 GitHub 提供的 Ubuntu 环境构建
+
+    steps:
+    # 第一步：拉取你的 GitHub 仓库代码
+    - name: 拉取你的 GitHub 仓库代码
+      uses: actions/checkout@v3
+
+    # 第二步：设置 Python 环境
+    - name: 设置 Python 环境
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    # 第三步：安装构建依赖和 Buildozer 工具链
+    - name: 安装构建依赖和 Buildozer 工具链
+      run: |
+        sudo apt update
+        sudo apt install -y zip unzip openjdk-17-jdk ccache build-essential libffi-dev libssl-dev
+        pip install --upgrade pip
+        pip install buildozer cython
+
+    # 第四步：执行 Buildozer 构建命令（根据用户选择的 debug 或 release 类型）
+    - name: 执行 Buildozer 构建命令
+      run: |
+        buildozer android ${{ github.event.inputs.build-type }}
+
+    # 第五步：上传构建好的 APK 文件（供用户下载）
+    - name: 上传构建好的 APK 文件
+      uses: actions/upload-artifact@v3
+      with:
+        name: worktime_apk
+        path: bin/*.apk
+
+    # 第六步：如果构建失败，显示构建日志
+    - name: 如果构建失败，显示构建日志
+      if: failure()
+      run: |
+        cat .buildozer/android/platform/build/build.log || echo "找不到构建日志"
