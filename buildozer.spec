@@ -1,4 +1,3 @@
-
 [app]
 title = 工时表格生成器
 package.name = WorkTimeExporter
@@ -11,9 +10,9 @@ orientation = portrait
 fullscreen = 0
 android.permissions = WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE
 android.minapi = 29
-android.sdk = 33
-android.ndk = 25b
+# android.sdk = 33   # 已废弃，删除或注释掉
 android.api = 33
+android.ndk = 25b
 android.enable_legacy_storage = 1
 log_level = 2
 android.sdk_path = $HOME/android-sdk
