@@ -1,52 +1,54 @@
-# 工作流程名称：构建 APK
-name: 构建 APK
+# 工作流程名称：构建 APK 安装包
+name: Build APK
 
-# 触发条件：支持手动触发（用户可选构建类型）
+# 手动触发方式：用户可通过 GitHub Actions 页面点按钮触发
 on:
   workflow_dispatch:
     inputs:
       build-type:
-        description: '构建类型（debug/release）'
+        description: '构建类型（debug 或 release）'
         required: true
-        default: 'release'  # 默认是调试版本
+        default: 'debug'
 
 jobs:
   build-apk:
-    runs-on: ubuntu-latest  # 使用 GitHub 提供的 Ubuntu 环境构建
+    # 使用 GitHub 提供的 Ubuntu Linux 系统作为构建服务器
+    runs-on: ubuntu-latest
 
     steps:
-    # 第一步：拉取你的 GitHub 仓库代码
-    - name: 拉取你的 GitHub 仓库代码
+    # 第一步：拉取 GitHub 仓库代码
+    - name: 拉取项目代码
       uses: actions/checkout@v3
 
-    # 第二步：设置 Python 环境
-    - name: 设置 Python 环境
+    # 第二步：安装并配置 Python 环境（用于运行 buildozer）
+    - name: 安装 Python 3.10
       uses: actions/setup-python@v4
       with:
         python-version: '3.10'
 
-    # 第三步：安装构建依赖和 Buildozer 工具链
-    - name: 安装构建依赖和 Buildozer 工具链
+    # 第三步：安装 Buildozer 和所需的系统依赖
+    - name: 安装构建依赖
       run: |
         sudo apt update
         sudo apt install -y zip unzip openjdk-17-jdk ccache build-essential libffi-dev libssl-dev
         pip install --upgrade pip
         pip install buildozer cython
 
-    # 第四步：执行 Buildozer 构建命令（根据用户选择的 debug 或 release 类型）
-    - name: 执行 Buildozer 构建命令
+    # 第四步：使用 Buildozer 开始构建 Android APK
+    - name: 构建 APK
       run: |
         buildozer android ${{ github.event.inputs.build-type }}
 
-    # 第五步：上传构建好的 APK 文件（供用户下载）
-    - name: 上传构建好的 APK 文件
-      uses: actions/upload-artifact@v3
+    # 第五步：上传构建生成的 APK 文件，供用户从 GitHub 页面下载
+    - name: 上传 APK 文件
+      uses: actions/upload-artifact@v4
       with:
         name: worktime_apk
         path: bin/*.apk
 
-    # 第六步：如果构建失败，显示构建日志
-    - name: 如果构建失败，显示构建日志
+    # 第六步（可选）：如果构建失败，输出错误日志以帮助调试
+    - name: 显示构建日志（如果失败）
       if: failure()
       run: |
-        cat .buildozer/android/platform/build/build.log || echo "找不到构建日志"
+        echo "====== 构建失败，查看日志 ======"
+        cat .buildozer/android/platform/build/build.log || echo "未找到日志文件"
