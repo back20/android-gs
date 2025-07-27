@@ -40,7 +40,6 @@ jobs:
           automake libtool autoconf pkg-config build-essential \
           libopenblas-dev liblapack-dev gfortran \
           libssl-dev libffi-dev
-        # 验证依赖安装
         dpkg -l | grep -E 'automake|libtool|autoconf|pkg-config|build-essential' > ${{ env.ERROR_LOG_PATH }} 2>&1
 
     - name: 设置 Python
@@ -57,10 +56,18 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install --upgrade buildozer cython
-        # 记录工具版本到日志
         echo "===== 工具版本 =====" >> ${{ env.ERROR_LOG_PATH }}
         pip list | grep -E 'buildozer|cython|pythonforandroid' >> ${{ env.ERROR_LOG_PATH }} 2>&1
         buildozer --version >> ${{ env.ERROR_LOG_PATH }} 2>&1
+
+    - name: 创建必要目录并设置权限
+      run: |
+        mkdir -p /home/runner/work/android-gsjs/android-gsjs/.buildozer/android/app
+        mkdir -p ~/.buildozer/android/platform/
+        chmod -R 777 /home/runner/work/android-gsjs/android-gsjs/.buildozer
+        # 验证目录创建
+        echo "===== 目录验证 =====" >> ${{ env.ERROR_LOG_PATH }}
+        ls -laR /home/runner/work/android-gsjs/android-gsjs/.buildozer/ >> ${{ env.ERROR_LOG_PATH }} 2>&1
 
     - name: 设置 Java
       uses: actions/setup-java@v4
@@ -92,7 +99,6 @@ jobs:
         ln -s $ANDROID_HOME ~/.buildozer/android/platform/android-sdk
         mkdir -p ~/.buildozer/android/platform/android-sdk/tools/bin/
         ln -s $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager ~/.buildozer/android/platform/android-sdk/tools/bin/sdkmanager
-        # 验证符号链接
         echo "===== Buildozer 配置 =====" >> ${{ env.ERROR_LOG_PATH }}
         ls -la ~/.buildozer/android/platform/ >> ${{ env.ERROR_LOG_PATH }} 2>&1
 
@@ -111,7 +117,7 @@ jobs:
         echo "requirements = python3,kivy==2.1.0,kivymd==0.104.2,pandas==1.5.3,openpyxl==3.1.2,numpy==1.24.3" >> buildozer.spec
         echo "android.build_tools_version = 33.0.2" >> buildozer.spec
         echo "android.ndk_version = 25.1.8937393" >> buildozer.spec
-        echo "android.archs = arm64-v8a,armeabi-v7a" >> buildozer.spec  # 明确指定架构
+        echo "android.archs = arm64-v8a,armeabi-v7a" >> buildozer.spec
 
         if [ "${{ github.event.inputs.release_type }}" == "release" ]; then
           sed -i '/android.permissions =/c\android.permissions = INTERNET, WRITE_EXTERNAL_STORAGE, READ_EXTERNAL_STORAGE' buildozer.spec
@@ -121,11 +127,10 @@ jobs:
           echo "android.keystore.alias.password = \$ENV{KEY_PASSWORD}" >> buildozer.spec
         fi
         
-        # 输出最终配置到日志
         echo "===== buildozer.spec =====" >> ${{ env.ERROR_LOG_PATH }}
         cat buildozer.spec >> ${{ env.ERROR_LOG_PATH }} 2>&1
 
-    - name: 构建 APK（增强错误捕获）
+    - name: 构建 APK（修复命令格式）
       env:
         KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -140,11 +145,10 @@ jobs:
           mv release.keystore ~/.buildozer/android/platform/ 2>> ${{ env.ERROR_LOG_PATH }}
         fi
         
-        # 执行构建，捕获详细错误
         echo "===== 开始构建 =====" >> ${{ env.ERROR_LOG_PATH }}
-        buildozer android ${{ github.event.inputs.release_type }} -v --log_level=2 2>&1 | tee -a ${{ env.ERROR_LOG_PATH }} || (
+        # 移除错误的 -v 参数，仅保留 --log_level=2
+        buildozer android ${{ github.event.inputs.release_type }} --log_level=2 2>&1 | tee -a ${{ env.ERROR_LOG_PATH }} || (
           echo "===== 构建失败 =====" >> ${{ env.ERROR_LOG_PATH }}
-          # 收集Buildozer临时文件和日志
           if [ -d ".buildozer" ]; then
             echo "===== Buildozer 临时文件 =====" >> ${{ env.ERROR_LOG_PATH }}
             find .buildozer -type f -exec ls -la {} \; >> ${{ env.ERROR_LOG_PATH }} 2>&1
