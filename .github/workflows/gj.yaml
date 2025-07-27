@@ -22,17 +22,17 @@ jobs:
     timeout-minutes: 60
 
     steps:
-    - name: 步骤 1/9 - 检出代码
+    - name: 步骤 1/10 - 检出代码
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
 
-    - name: 步骤 2/9 - 设置 Python
+    - name: 步骤 2/10 - 设置 Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.9'
 
-    - name: 步骤 3/9 - 缓存依赖
+    - name: 步骤 3/10 - 缓存依赖
       uses: actions/cache@v4
       with:
         path: |
@@ -42,50 +42,58 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-buildozer-
 
-    - name: 步骤 4/9 - 安装 Buildozer
+    - name: 步骤 4/10 - 安装 Buildozer
       run: |
         python -m pip install --upgrade pip
         pip install buildozer cython
 
-    - name: 步骤 5/9 - 设置 Java
+    - name: 步骤 5/10 - 设置 Java
       uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
         java-version: '17'
 
-    - name: 步骤 6/9 - 安装 Android SDK
+    - name: 步骤 6/10 - 安装 Android SDK
       uses: malinskiy/action-android/install-sdk@release/0.1.6
 
-    - name: 步骤 7/9 - 安装必要的 Android 构建工具
+    - name: 步骤 7/10 - 安装必要的 Android 构建工具
       run: |
-        # 列出可用的 build-tools 版本
-        echo "可用的 build-tools 版本:"
-        /home/runner/android-sdk/cmdline-tools/latest/bin/sdkmanager --list | grep build-tools
-        
-        # 安装最新的 build-tools（根据实际情况选择版本）
-        echo "安装 build-tools..."
+        # 安装最新的 build-tools 和平台
+        echo "安装 build-tools 和平台..."
         /home/runner/android-sdk/cmdline-tools/latest/bin/sdkmanager "build-tools;33.0.2"
-        
-        # 安装其他必要的组件
-        echo "安装其他必要的 Android 组件..."
-        /home/runner/android-sdk/cmdline-tools/latest/bin/sdkmanager "platforms;android-33" "ndk;25.2.9519653"
+        /home/runner/android-sdk/cmdline-tools/latest/bin/sdkmanager "platforms;android-33"
+        /home/runner/android-sdk/cmdline-tools/latest/bin/sdkmanager "ndk;25.2.9519653"
         
         # 接受所有许可证
         echo "接受 Android SDK 许可证..."
         yes | /home/runner/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses
 
-    - name: 步骤 8/9 - 配置 Buildozer
+    - name: 步骤 8/10 - 配置 Buildozer 环境变量
+      run: |
+        # 创建 Buildozer 配置目录
+        mkdir -p ~/.buildozer/android
+        
+        # 创建 local.properties 文件指定 SDK 路径
+        echo "sdk.dir=/home/runner/android-sdk" > ~/.buildozer/android/local.properties
+        
+        # 打印配置信息用于调试
+        echo "Buildozer 配置文件内容:"
+        cat ~/.buildozer/android/local.properties
+
+    - name: 步骤 9/10 - 配置 Buildozer.spec
       run: |
         if [ ! -f buildozer.spec ]; then
           buildozer init
         fi
         
+        # 基础配置
         sed -i 's/title = My Application/title = 工时价格Excel生成器/g' buildozer.spec
         sed -i 's/package.name = myapp/package.name = gzexcel/g' buildozer.spec
         sed -i 's/package.domain = org.test/package.domain = com.example/g' buildozer.spec
         sed -i 's/requirements = python3,kivy/requirements = python3,kivy,kivymd,pandas,openpyxl/g' buildozer.spec
         sed -i 's/source.main = main.py/source.main = gz.py/g' buildozer.spec
         
+        # 根据构建类型调整配置
         if [ "${{ github.event.inputs.release_type }}" == "release" ]; then
           echo "配置发布版本构建..."
           sed -i '/android.permissions =/c\android.permissions = INTERNET, WRITE_EXTERNAL_STORAGE, READ_EXTERNAL_STORAGE' buildozer.spec
@@ -97,14 +105,30 @@ jobs:
           echo "配置调试版本构建..."
         fi
 
-    - name: 步骤 9/9 - 构建 APK
+    - name: 步骤 10/10 - 构建 APK
       env:
         KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        ANDROID_SDK_ROOT: /home/runner/android-sdk  # 明确设置 ANDROID_SDK_ROOT
+        ANDROID_SDK_ROOT: /home/runner/android-sdk  # 明确设置 SDK 路径
       run: |
+        # 打印环境变量和目录结构用于调试
+        echo "===== 环境变量 ====="
+        echo "ANDROID_SDK_ROOT: $ANDROID_SDK_ROOT"
+        echo "PATH: $PATH"
+        
+        echo "===== SDK 目录结构 ====="
+        echo "SDK 根目录内容:"
+        ls -la $ANDROID_SDK_ROOT
+        
+        echo "build-tools 目录内容:"
+        ls -la $ANDROID_SDK_ROOT/build-tools
+        
+        echo "build-tools 版本列表:"
+        ls -la $ANDROID_SDK_ROOT/build-tools
+        
+        # 准备签名密钥（仅发布版本需要）
         if [ "${{ github.event.inputs.release_type }}" == "release" ]; then
           echo "准备签名密钥..."
           echo "$KEYSTORE_BASE64" | base64 -d > release.keystore
@@ -112,13 +136,10 @@ jobs:
           mv release.keystore ~/.buildozer/android/platform/
         fi
         
+        # 设置内存限制
         export GRADLE_OPTS="-Xmx4g -Xms1g"
         
-        # 打印 Android SDK 路径和内容，用于调试
-        echo "ANDROID_SDK_ROOT: $ANDROID_SDK_ROOT"
-        echo "build-tools 目录内容:"
-        ls -la $ANDROID_SDK_ROOT/build-tools
-        
+        # 执行构建
         if [ "${{ github.event.inputs.release_type }}" == "release" ]; then
           echo "开始构建签名 APK..."
           buildozer -v android release
