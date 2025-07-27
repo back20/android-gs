@@ -41,7 +41,7 @@ jobs:
             zlib1g-dev \
             libncurses5-dev \
             libncursesw5-dev \
-            libtinfo6 \  # 替代 libtinfo5，适配 Ubuntu 22.04+
+            libtinfo6   # 替代 libtinfo5，适配 Ubuntu 22.04+
             cmake \
             libffi-dev \
             libssl-dev
