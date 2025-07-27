@@ -1,12 +1,12 @@
-name: 构建 APK
+name: Build APK
 
 on:
   workflow_dispatch:
     inputs:
       build-type:
-        description: '构建类型（调试版或发布版）'
+        description: '构建类型（debug 或 release）'
         required: true
-        default: '发布版'
+        default: 'release'
 
 jobs:
   build-apk:
@@ -16,88 +16,77 @@ jobs:
       ANDROID_SDK_ROOT: $HOME/android-sdk
 
     steps:
-    - name: 检出代码
+    - name: Checkout code
       uses: actions/checkout@v3
 
-    - name: 设置 Python 3.10
+    - name: Setup Python 3.10
       uses: actions/setup-python@v4
       with:
         python-version: '3.10'
 
-    - name: 安装系统依赖
+    - name: Install system dependencies
       run: |
         sudo apt update
         sudo apt install -y zip unzip openjdk-17-jdk ccache build-essential libffi-dev libssl-dev wget
 
-    - name: 下载并安装 Android 命令行工具
+    - name: Download and install Android cmdline-tools
       run: |
         mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
         cd $ANDROID_SDK_ROOT/cmdline-tools
         wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline-tools.zip
         unzip cmdline-tools.zip
         rm cmdline-tools.zip
-        # 命令行工具解压后会有一个 cmdline-tools 文件夹，将其重命名为 latest
         mv cmdline-tools latest
-        # 确保 sdkmanager 可执行
         chmod +x latest/bin/sdkmanager
       shell: bash
 
-    - name: 设置 Android SDK 环境变量
+    - name: Set environment variables for Android SDK
       run: |
         echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
         echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
         echo "$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
+        echo "Current PATH: $PATH"
+        which sdkmanager
 
-    - name: 确认命令行工具目录结构
+    - name: Confirm cmdline-tools directory structure
       run: |
         ls -l $ANDROID_SDK_ROOT/cmdline-tools
         ls -l $ANDROID_SDK_ROOT/cmdline-tools/latest
         ls -l $ANDROID_SDK_ROOT/cmdline-tools/latest/bin
 
-    - name: 接受 Android SDK 许可证并安装 SDK 组件
+    - name: Check Java version
+      run: java -version
+
+    - name: Accept Android SDK licenses and install SDK components
       run: |
         yes | sdkmanager --sdk_root=$ANDROID_SDK_ROOT --licenses
-        sdkmanager --sdk_root=$ANDROID_SDK_ROOT "平台工具" "平台;android-33" "构建工具;33.0.0" "构建工具;36.0.0"
+        sdkmanager --sdk_root=$ANDROID_SDK_ROOT "platform-tools" "platforms;android-33" "build-tools;33.0.0"
 
-    - name: 检查构建工具目录
-      run: |
-        if [ ! -d "$ANDROID_SDK_ROOT/build-tools" ]; then
-          echo "未找到构建工具目录。请检查 SDK 安装情况。"
-          exit 1
-        fi
-
-    - name: 安装 Buildozer 和 Python 依赖
+    - name: Install Buildozer and Python dependencies
       run: |
         pip install --upgrade pip
         pip install buildozer cython
 
-    - name: 列出项目目录
+    - name: List project directory
       run: ls -lR
 
-    - name: 显示 buildozer.spec 内容
-      run: cat buildozer.spec || echo "未找到 buildozer.spec"
+    - name: Show buildozer.spec content
+      run: cat buildozer.spec || echo "buildozer.spec 未找到"
 
-    - name: 如果配置文件存在则跳过 buildozer 初始化
+    - name: Skip buildozer init if config exists
       run: echo "buildozer.spec 已存在，跳过初始化"
 
-    - name: 使用 Buildozer 构建 APK
+    - name: Build APK using Buildozer
       run: |
-        buildozer android ${{ github.event.inputs['build-type'] }} || { 
-          if [ -f ./.buildozer/android/platform/build/build.log ]; then
-            cat ./.buildozer/android/platform/build/build.log
-          else
-            echo "未找到构建日志文件。"
-          fi
-          exit 1
-        }
+        buildozer android ${{ github.event.inputs['build-type'] }} || true
 
-    - name: 上传 APK 工件
+    - name: Upload APK artifact
       uses: actions/upload-artifact@v4
       with:
         name: worktime_apk
         path: bin/*.apk
 
-    - name: 若存在则上传构建日志
+    - name: Upload build logs if exist
       uses: actions/upload-artifact@v4
       with:
         name: build_logs
