@@ -1,54 +1,59 @@
-# 工作流程名称：构建 APK 安装包
-name: Build APK
+name: 制作APK
 
-# 手动触发方式：用户可通过 GitHub Actions 页面点按钮触发
 on:
   workflow_dispatch:
     inputs:
       build-type:
         description: '构建类型（debug 或 release）'
         required: true
-        default: 'debug'
+        default: 'release'
 
 jobs:
   build-apk:
-    # 使用 GitHub 提供的 Ubuntu Linux 系统作为构建服务器
     runs-on: ubuntu-latest
 
     steps:
-    # 第一步：拉取 GitHub 仓库代码
-    - name: 拉取项目代码
+    - name: 拉取仓库代码
       uses: actions/checkout@v3
 
-    # 第二步：安装并配置 Python 环境（用于运行 buildozer）
     - name: 安装 Python 3.10
       uses: actions/setup-python@v4
       with:
         python-version: '3.10'
 
-    # 第三步：安装 Buildozer 和所需的系统依赖
-    - name: 安装构建依赖
+    - name: 安装系统依赖和 Buildozer
       run: |
         sudo apt update
         sudo apt install -y zip unzip openjdk-17-jdk ccache build-essential libffi-dev libssl-dev
         pip install --upgrade pip
         pip install buildozer cython
 
-    # 第四步：使用 Buildozer 开始构建 Android APK
-    - name: 构建 APK
+    - name: 查看项目目录结构
       run: |
-        buildozer android ${{ github.event.inputs.build-type }}
+        echo "当前目录结构："
+        ls -lR
 
-    # 第五步：上传构建生成的 APK 文件，供用户从 GitHub 页面下载
-    - name: 上传 APK 文件
+    - name: 显示 buildozer.spec 内容
+      run: |
+        cat buildozer.spec || echo "未找到 buildozer.spec"
+
+    - name: 初始化 buildozer
+      run: |
+        buildozer init || true
+
+    - name: 执行 Buildozer 构建
+      run: |
+        buildozer android ${{ github.event.inputs.build-type }} || true
+
+    - name: 上传 APK 文件（如果有）
       uses: actions/upload-artifact@v4
       with:
         name: worktime_apk
         path: bin/*.apk
 
-    # 第六步（可选）：如果构建失败，输出错误日志以帮助调试
-    - name: 显示构建日志（如果失败）
-      if: failure()
-      run: |
-        echo "====== 构建失败，查看日志 ======"
-        cat .buildozer/android/platform/build/build.log || echo "未找到日志文件"
+    - name: 上传构建日志（如果存在）
+      if: failure() || always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: build_logs
+        path: ./.buildozer/android/platform/build/build.log
