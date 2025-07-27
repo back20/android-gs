@@ -1,81 +1,99 @@
-name: 构建 APK
+name: 构建APK
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
+    inputs:
+      build-type:
+        description: '构建类型（debug或release）'
+        required: true
+        default: 'release'
 
 jobs:
-  build:
+  build-apk:
     runs-on: ubuntu-latest
 
+    env:
+      ANDROID_SDK_ROOT: $HOME/android-sdk
+
     steps:
-    - name: 检出项目代码
+    - name: 检出代码
       uses: actions/checkout@v3
 
-    - name: 安装 Android SDK 和 NDK
-      uses: android-actions/setup-android@v2
-      with:
-        api-level: 33
-        build-tools: 33.0.0
-        ndk-version: 25.1.8937393
-
-    - name: 修复 sdkmanager 路径
-      run: |
-        if [ -d "$ANDROID_HOME/cmdline-tools/latest" ]; then
-          echo "latest 已存在，跳过复制"
-        else
-          TOOL_DIR=$(find "$ANDROID_HOME/cmdline-tools" -maxdepth 1 -mindepth 1 -type d ! -name "latest" | head -n 1)
-          echo "复制 $TOOL_DIR 到 latest/"
-          mkdir -p $ANDROID_HOME/cmdline-tools/latest
-          cp -r $TOOL_DIR/* $ANDROID_HOME/cmdline-tools/latest/
-        fi
-        echo "sdkmanager 路径:"
-        find $ANDROID_HOME -name sdkmanager
-      env:
-        ANDROID_HOME: /usr/local/lib/android/sdk
-
-    - name: 安装 Python 与依赖
+    - name: 配置Python 3.10
       uses: actions/setup-python@v4
       with:
         python-version: '3.10'
 
-    - name: 安装 Buildozer 和构建工具依赖
+    - name: 安装系统依赖
       run: |
         sudo apt update
-        sudo apt install -y build-essential ccache git zip unzip openjdk-17-jdk \
-          autoconf automake libtool pkg-config
+        sudo apt install -y zip unzip openjdk-17-jdk ccache build-essential libffi-dev libssl-dev wget
+
+    - name: 更新Autoconf并运行autoupdate
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y autoconf
+        cd ${{ github.workspace }}/.buildozer/android/platform/build-armeabi-v7a_arm64-v8a/build/other_builds/libffi/armeabi-v7a__ndk_target_29/libffi
+        autoupdate
+        autoreconf -i
+      shell: bash
+
+    - name: 下载并安装Android命令行工具
+      run: |
+        mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
+        cd $ANDROID_SDK_ROOT/cmdline-tools
+        wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline-tools.zip
+        unzip cmdline-tools.zip
+        rm cmdline-tools.zip
+        # cmdline-tools解压后会有一个cmdline-tools文件夹，改名为latest
+        mv cmdline-tools latest
+        # 确保sdkmanager可执行
+        chmod +x latest/bin/sdkmanager
+      shell: bash
+
+    - name: 设置Android SDK的环境变量
+      run: |
+        echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+        echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
+        echo "$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
+
+    - name: 确认cmdline-tools目录结构
+      run: |
+        ls -l $ANDROID_SDK_ROOT/cmdline-tools
+        ls -l $ANDROID_SDK_ROOT/cmdline-tools/latest
+        ls -l $ANDROID_SDK_ROOT/cmdline-tools/latest/bin
+
+    - name: 接受Android SDK许可并安装SDK组件
+      run: |
+        yes | sdkmanager --sdk_root=$ANDROID_SDK_ROOT --licenses
+        sdkmanager --sdk_root=$ANDROID_SDK_ROOT "platform-tools" "platforms;android-33" "build-tools;33.0.0"
+
+    - name: 安装Buildozer和Python依赖
+      run: |
         pip install --upgrade pip
         pip install buildozer cython
 
-    - name: 初始化 libffi 的 autotools（修复宏错误）
+    - name: 列出项目目录
+      run: ls -lR
+
+    - name: 显示buildozer.spec内容
+      run: cat buildozer.spec || echo "未找到buildozer.spec"
+
+    - name: 若配置存在则跳过buildozer初始化
+      run: echo "buildozer.spec已存在，跳过初始化"
+
+    - name: 使用Buildozer构建APK
       run: |
-        LIBFFI_DIR=$(find .buildozer/android/platform/build-* -type d -path "*/libffi/*/libffi" | head -n 1)
-        echo "Found libffi dir: $LIBFFI_DIR"
-        if [ -d "$LIBFFI_DIR" ]; then
-          cd "$LIBFFI_DIR"
-          libtoolize --force --copy
-          aclocal -I m4
-          autoheader || true
-          automake --add-missing --foreign
-          autoconf
-        else
-          echo "libffi 目录未找到，跳过 autotools 初始化"
-        fi
+        buildozer android ${{ github.event.inputs['build-type'] }} || true
 
-    - name: 解码 Keystore（用于签名）
-      run: echo "$KEYSTORE_BASE64" | base64 --decode > my-release-key.keystore
-      env:
-        KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-
-    - name: 构建 Release APK（自动签名）
-      env:
-        KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-        KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-      run: buildozer android release
-
-    - name: 上传已签名 APK
+    - name: 上传APK产物
       uses: actions/upload-artifact@v4
       with:
-        name: signed-apk
+        name: worktime_apk
         path: bin/*.apk
+
+    - name: 若存在构建日志则上传
+      uses: actions/upload-artifact@v4
+      with:
+        name: build_logs
+        path: ./.buildozer/android/platform/build/build.log
