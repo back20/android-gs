@@ -24,11 +24,15 @@ android.permissions = WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE
 android.api = 33
 android.minapi = 29
 android.ndk = 25b
+android.sdk = 33
 android.enable_legacy_storage = 1
 
 # SDK/NDK 路径（GitHub Actions 使用）
 android.sdk_path = /usr/local/lib/android/sdk
 android.ndk_path = /usr/local/lib/android/sdk/ndk/25.1.8937393
+
+# Gradle 修复兼容依赖
+android.gradle_dependencies = com.android.tools.build:gradle:7.2.2
 
 # 日志等级（0-2，2为详细）
 log_level = 2
