@@ -1,8 +1,17 @@
+name: Build Signed APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
-    - uses: actions/checkout@v3
+    - name: 检出项目代码
+      uses: actions/checkout@v3
 
     - name: Set up Android SDK
       uses: android-actions/setup-android@v2
@@ -16,25 +25,25 @@ jobs:
       with:
         python-version: '3.10'
 
-    - name: 安装 Buildozer
+    - name: 安装 Buildozer 和依赖工具
       run: |
         sudo apt update
         sudo apt install -y build-essential ccache git zip unzip openjdk-17-jdk
         pip install --upgrade pip
         pip install buildozer cython
 
-    - name: 解码 Keystore
+    - name: 解码 Keystore（签名密钥）
       run: echo "$KEYSTORE_BASE64" | base64 --decode > my-release-key.keystore
       env:
         KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
 
-    - name: 构建 Release APK
+    - name: 构建 Release APK（自动签名）
       env:
         KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
       run: buildozer android release
 
-    - name: 上传 APK
+    - name: 上传已签名 APK
       uses: actions/upload-artifact@v4
       with:
         name: signed-apk
