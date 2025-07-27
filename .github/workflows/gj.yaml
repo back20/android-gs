@@ -5,12 +5,12 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
-  workflow_dispatch:  # 允许手动触发构建
+  workflow_dispatch:
     inputs:
       release_type:
         description: '构建类型'
         required: true
-        default: 'debug'
+        default: 'release'
         type: choice
         options:
           - debug
@@ -25,7 +25,7 @@ jobs:
     - name: 步骤 1/8 - 检出代码
       uses: actions/checkout@v4
       with:
-        fetch-depth: 0  # 获取完整提交历史
+        fetch-depth: 0
 
     - name: 步骤 2/8 - 设置 Python
       uses: actions/setup-python@v5
@@ -47,30 +47,27 @@ jobs:
         python -m pip install --upgrade pip
         pip install buildozer cython
 
-    - name: 步骤 5/8 - 设置 Java
+    - name: 步骤 5/8 - 设置 Java（升级到 Java 17）
       uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
-        java-version: '11'
+        java-version: '17'  # 升级到 Java 17 以兼容 Android SDK
 
     - name: 步骤 6/8 - 安装 Android SDK
       uses: malinskiy/action-android/install-sdk@release/0.1.6
 
     - name: 步骤 7/8 - 配置 Buildozer
       run: |
-        # 初始化配置（如果不存在）
         if [ ! -f buildozer.spec ]; then
           buildozer init
         fi
         
-        # 更新应用信息
         sed -i 's/title = My Application/title = 工时价格Excel生成器/g' buildozer.spec
         sed -i 's/package.name = myapp/package.name = gzexcel/g' buildozer.spec
         sed -i 's/package.domain = org.test/package.domain = com.example/g' buildozer.spec
         sed -i 's/requirements = python3,kivy/requirements = python3,kivy,kivymd,pandas,openpyxl/g' buildozer.spec
         sed -i 's/source.main = main.py/source.main = gz.py/g' buildozer.spec
         
-        # 根据输入类型设置构建参数
         if [ "${{ github.event.inputs.release_type }}" == "release" ]; then
           echo "配置发布版本构建..."
           sed -i '/android.permissions =/c\android.permissions = INTERNET, WRITE_EXTERNAL_STORAGE, READ_EXTERNAL_STORAGE' buildozer.spec
@@ -89,7 +86,6 @@ jobs:
         KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
       run: |
-        # 解码密钥库（仅用于发布版本）
         if [ "${{ github.event.inputs.release_type }}" == "release" ]; then
           echo "准备签名密钥..."
           echo "$KEYSTORE_BASE64" | base64 -d > release.keystore
@@ -97,10 +93,8 @@ jobs:
           mv release.keystore ~/.buildozer/android/platform/
         fi
         
-        # 设置内存限制
         export GRADLE_OPTS="-Xmx4g -Xms1g"
         
-        # 根据输入类型选择构建命令
         if [ "${{ github.event.inputs.release_type }}" == "release" ]; then
           echo "开始构建签名 APK..."
           buildozer -v android release
@@ -112,15 +106,12 @@ jobs:
     - name: 输出构建结果
       id: output
       run: |
-        # 获取 APK 路径
         APK_PATH=$(find bin -name "*-${{ github.event.inputs.release_type }}.apk" | head -1)
         echo "APK_PATH=$APK_PATH" >> $GITHUB_ENV
         
-        # 获取版本信息
         VERSION=$(grep "version = " buildozer.spec | cut -d'=' -f2 | tr -d ' ')
         echo "VERSION=${VERSION:-unknown}" >> $GITHUB_ENV
         
-        # 获取提交信息
         COMMIT_MSG=$(git log -1 --pretty=%B)
         echo "COMMIT_MSG=$COMMIT_MSG" >> $GITHUB_ENV
 
