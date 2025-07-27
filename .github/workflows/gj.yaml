@@ -22,17 +22,17 @@ jobs:
     timeout-minutes: 60
 
     steps:
-    - name: 步骤 1/8 - 检出代码
+    - name: 步骤 1/9 - 检出代码
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
 
-    - name: 步骤 2/8 - 设置 Python
+    - name: 步骤 2/9 - 设置 Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.9'
 
-    - name: 步骤 3/8 - 缓存依赖
+    - name: 步骤 3/9 - 缓存依赖
       uses: actions/cache@v4
       with:
         path: |
@@ -42,21 +42,39 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-buildozer-
 
-    - name: 步骤 4/8 - 安装 Buildozer
+    - name: 步骤 4/9 - 安装 Buildozer
       run: |
         python -m pip install --upgrade pip
         pip install buildozer cython
 
-    - name: 步骤 5/8 - 设置 Java（升级到 Java 17）
+    - name: 步骤 5/9 - 设置 Java
       uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
-        java-version: '17'  # 升级到 Java 17 以兼容 Android SDK
+        java-version: '17'
 
-    - name: 步骤 6/8 - 安装 Android SDK
+    - name: 步骤 6/9 - 安装 Android SDK
       uses: malinskiy/action-android/install-sdk@release/0.1.6
 
-    - name: 步骤 7/8 - 配置 Buildozer
+    - name: 步骤 7/9 - 安装必要的 Android 构建工具
+      run: |
+        # 列出可用的 build-tools 版本
+        echo "可用的 build-tools 版本:"
+        /home/runner/android-sdk/cmdline-tools/latest/bin/sdkmanager --list | grep build-tools
+        
+        # 安装最新的 build-tools（根据实际情况选择版本）
+        echo "安装 build-tools..."
+        /home/runner/android-sdk/cmdline-tools/latest/bin/sdkmanager "build-tools;33.0.2"
+        
+        # 安装其他必要的组件
+        echo "安装其他必要的 Android 组件..."
+        /home/runner/android-sdk/cmdline-tools/latest/bin/sdkmanager "platforms;android-33" "ndk;25.2.9519653"
+        
+        # 接受所有许可证
+        echo "接受 Android SDK 许可证..."
+        yes | /home/runner/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses
+
+    - name: 步骤 8/9 - 配置 Buildozer
       run: |
         if [ ! -f buildozer.spec ]; then
           buildozer init
@@ -79,12 +97,13 @@ jobs:
           echo "配置调试版本构建..."
         fi
 
-    - name: 步骤 8/8 - 构建 APK
+    - name: 步骤 9/9 - 构建 APK
       env:
         KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        ANDROID_SDK_ROOT: /home/runner/android-sdk  # 明确设置 ANDROID_SDK_ROOT
       run: |
         if [ "${{ github.event.inputs.release_type }}" == "release" ]; then
           echo "准备签名密钥..."
@@ -94,6 +113,11 @@ jobs:
         fi
         
         export GRADLE_OPTS="-Xmx4g -Xms1g"
+        
+        # 打印 Android SDK 路径和内容，用于调试
+        echo "ANDROID_SDK_ROOT: $ANDROID_SDK_ROOT"
+        echo "build-tools 目录内容:"
+        ls -la $ANDROID_SDK_ROOT/build-tools
         
         if [ "${{ github.event.inputs.release_type }}" == "release" ]; then
           echo "开始构建签名 APK..."
