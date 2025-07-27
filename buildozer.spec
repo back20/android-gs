@@ -18,9 +18,9 @@ android.api = 33
 android.ndk = 25b
 android.enable_legacy_storage = 1
 
-# 路径：请使用绝对路径（在 GitHub Actions 中通过环境变量设置）
-android.sdk_path = /home/runner/android-sdk
-android.ndk_path = /home/runner/android-sdk/ndk
+# SDK/NDK 路径（GitHub Actions 自动设置为环境变量）
+android.sdk_path = $ANDROID_SDK_ROOT
+android.ndk_path = $ANDROID_NDK_HOME
 
 # 自动接受许可
 android.accept_sdk_license = True
