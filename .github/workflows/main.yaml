@@ -1,78 +1,69 @@
-name: '使用 Buildozer 构建 Android APK'
+name: Build APK with Buildozer
 
 on:
-  workflow_dispatch:  # ✅ 手动触发支持
+  push:
+    branches:
+      - main
+  pull_request:
 
 jobs:
   build:
-    name: 构建 APK
-    runs-on: ubuntu-22.04  # ✅ 使用更稳定版本，避免依赖冲突
+    runs-on: ubuntu-latest
 
     steps:
-      - name: 📦 检出代码仓库
-        uses: actions/checkout@v2
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-      - name: 🐍 设置 Python 环境
-        uses: actions/setup-python@v5
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v4
         with:
-          architecture: x64
-          python-version: 3.8  # ✅ 可根据项目需要调整
+          python-version: 3.10
 
-      - name: ☕ 安装 Java 17（Gradle 所需）
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-
-      - name: 🧭 设置 JAVA_HOME 环境变量
-        run: echo "JAVA_HOME=$JAVA_HOME" >> $GITHUB_ENV
-
-      - name: 🛠️ 安装系统依赖项和 Buildozer
+      - name: Install system dependencies
         run: |
-          sudo apt update
-          sudo apt install -y git \
-            zip \
-            unzip \
-            openjdk-17-jdk \
+          sudo apt-get update
+          sudo apt-get install -y \
             python3-pip \
-            autoconf \
-            libtool \
-            pkg-config \
-            zlib1g-dev \
-            libncurses5-dev \
-            libncursesw5-dev \
-            cmake \
-            libffi-dev \
+            python3-setuptools \
+            python3-dev \
+            build-essential \
+            git \
+            unzip \
+            openjdk-11-jdk \
             libssl-dev \
-            libtinfo6  # ✅ 修复：删除空包名错误
-          python3 -m pip install --upgrade pip
-          python3 -m pip install --upgrade \
-            Cython==0.29.33 \
-            buildozer
+            libffi-dev \
+            libsqlite3-dev
 
-      - name: 📦 安装 Python 依赖（如有 requirements.txt）
+      - name: Install Buildozer and Cython
         run: |
-          if [ -f requirements.txt ]; then
-            python3 -m pip install -r requirements.txt
-          fi
+          python3 -m pip install --upgrade pip
+          python3 -m pip install buildozer cython
 
-      - name: 💾 缓存 Buildozer 和 Gradle 构建缓存
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.buildozer
-            ~/.gradle
-          key: ${{ runner.os }}-buildozer-${{ hashFiles('**/*.py') }}
-          restore-keys: |
-            ${{ runner.os }}-buildozer-
+      - name: Install Android SDK and build-tools (including aidl)
+        run: |
+          mkdir -p $HOME/android-sdk/cmdline-tools
+          cd $HOME/android-sdk/cmdline-tools
+          curl -o commandlinetools.zip https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip
+          unzip commandlinetools.zip
+          mv cmdline-tools latest
 
-      - name: 🔨 使用 Buildozer 构建 APK
+          export ANDROID_HOME=$HOME/android-sdk
+          export PATH=$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH
+
+          yes | sdkmanager --sdk_root=$ANDROID_HOME --licenses
+
+          sdkmanager --sdk_root=$ANDROID_HOME \
+            "platform-tools" \
+            "platforms;android-31" \
+            "build-tools;34.0.0"
+
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+          echo "$ANDROID_HOME/platform-tools" >> $GITHUB_PATH
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
+
+      - name: Build APK with Buildozer
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+          PATH: ${{ env.PATH }}
         run: |
           buildozer android debug
-
-      - name: 📤 上传 APK 文件作为构建产物
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-apk
-          path: bin/*.apk
