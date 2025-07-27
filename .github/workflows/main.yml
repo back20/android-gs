@@ -1,5 +1,8 @@
 name: '使用 Buildozer 构建 Android APK'
 
+on:
+  workflow_dispatch:  # 添加手动触发按钮
+
 description: '使用 Buildozer 将 android-gs 项目打包成 APK 文件'
 
 inputs:
@@ -75,29 +78,4 @@ runs:
         export PATH=$PATH:~/.local/bin/
         python3 -m pip install --upgrade \
           Cython==0.29.33 \
-          buildozer
-      shell: bash
-
-    - name: 安装项目依赖（如果存在 requirements.txt）
-      run: |
-        source venv/bin/activate
-        if [ -f requirements.txt ]; then
-          python3 -m pip install -r requirements.txt
-        fi
-      shell: bash
-
-    - name: 缓存 Buildozer 和 Gradle 构建目录
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.buildozer
-          ~/.gradle
-        key: ${{ runner.os }}-buildozer-${{ hashFiles('**/*.py') }}
-        restore-keys: |
-          ${{ runner.os }}-buildozer-
-
-    - name: 使用 Buildozer 构建 APK
-      run: |
-        source venv/bin/activate
-        ${{ inputs.buildozer-cmd }}
-      shell: bash
+          buildo
