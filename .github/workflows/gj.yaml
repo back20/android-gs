@@ -10,7 +10,7 @@ on:
       release_type:
         description: '构建类型'
         required: true
-        default: 'release'
+        default: 'debug'
         type: choice
         options:
           - debug
@@ -26,6 +26,7 @@ jobs:
       ANDROID_NDK_HOME: /home/runner/android-sdk/ndk/25.1.8937393
       GRADLE_OPTS: "-Xmx6g -Xms2g"
       PYTHON_VERSION: '3.9'
+      ERROR_LOG_PATH: ./build_error.log  # 错误日志保存路径
 
     steps:
     - name: 检出代码
@@ -44,7 +45,7 @@ jobs:
       with:
         python-version: ${{ env.PYTHON_VERSION }}
 
-    - name: 清理并缓存依赖
+    - name: 清理旧缓存
       run: |
         rm -rf ~/.buildozer ~/.cache/pip .buildozer
       continue-on-error: true
@@ -84,21 +85,16 @@ jobs:
           buildozer init
         fi
         
-        # 使用 sed 批量修改配置
         sed -i -e 's/title = My Application/title = 工时价格Excel生成器/' \
                -e 's/package.name = myapp/package.name = gzexcel/' \
                -e 's/package.domain = org.test/package.domain = com.example/' \
                -e 's/source.main = main.py/source.main = gz.py/' \
                buildozer.spec
         
-        # 设置依赖（使用兼容的稳定版本）
         echo "requirements = python3,kivy==2.1.0,kivymd==0.104.2,pandas==1.5.3,openpyxl==3.1.2,numpy==1.24.3" >> buildozer.spec
-        
-        # Android 构建配置
         echo "android.build_tools_version = 33.0.2" >> buildozer.spec
         echo "android.ndk_version = 25.1.8937393" >> buildozer.spec
-        
-        # 签名配置（发布版）
+
         if [ "${{ github.event.inputs.release_type }}" == "release" ]; then
           sed -i '/android.permissions =/c\android.permissions = INTERNET, WRITE_EXTERNAL_STORAGE, READ_EXTERNAL_STORAGE' buildozer.spec
           echo "android.keystore = True" >> buildozer.spec
@@ -107,32 +103,47 @@ jobs:
           echo "android.keystore.alias.password = \$ENV{KEY_PASSWORD}" >> buildozer.spec
         fi
 
-    - name: 构建 APK
+    - name: 构建 APK（修正命令格式）
       env:
         KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
       run: |
+        # 创建错误日志文件
+        touch ${{ env.ERROR_LOG_PATH }}
+        
         # 准备签名密钥（发布版）
         if [ "${{ github.event.inputs.release_type }}" == "release" ]; then
-          echo "$KEYSTORE_BASE64" | base64 -d > release.keystore
-          mkdir -p ~/.buildozer/android/platform/
-          mv release.keystore ~/.buildozer/android/platform/
+          echo "$KEYSTORE_BASE64" | base64 -d > release.keystore 2>> ${{ env.ERROR_LOG_PATH }}
+          mkdir -p ~/.buildozer/android/platform/ 2>> ${{ env.ERROR_LOG_PATH }}
+          mv release.keystore ~/.buildozer/android/platform/ 2>> ${{ env.ERROR_LOG_PATH }}
         fi
         
-        # 执行构建（仅在失败时显示完整日志）
-        buildozer -v android ${{ github.event.inputs.release_type }} --log_level=2 || (
-          echo "构建失败，查看完整日志："
-          find .buildozer/android/platform/build-arm64-v8a_armeabi-v7a/logs/ -type f -exec cat {} \;
+        # 执行构建（修正命令格式：target command 参数顺序）
+        buildozer android ${{ github.event.inputs.release_type }} -v --log_level=2 2>> ${{ env.ERROR_LOG_PATH }} || (
+          echo "构建失败，错误信息已保存到 ${{ env.ERROR_LOG_PATH }}" >> ${{ env.ERROR_LOG_PATH }}
           exit 1
         )
 
-    - name: 上传构建产物
+    - name: 收集额外错误信息（构建失败时）
+      if: failure()
+      run: |
+        # 收集环境变量和系统信息到日志
+        echo "===== 环境变量 =====" >> ${{ env.ERROR_LOG_PATH }}
+        env >> ${{ env.ERROR_LOG_PATH }}
+        echo "===== 系统信息 =====" >> ${{ env.ERROR_LOG_PATH }}
+        uname -a >> ${{ env.ERROR_LOG_PATH }}
+        java -version 2>> ${{ env.ERROR_LOG_PATH }}
+        python --version >> ${{ env.ERROR_LOG_PATH }}
+        buildozer --version >> ${{ env.ERROR_LOG_PATH }}
+
+    - name: 上传错误日志和产物
       uses: actions/upload-artifact@v4
       with:
-        name: 工时价格Excel生成器_${{ github.sha }}
+        name: 构建产物与日志_${{ github.sha }}
         path: |
+          ${{ env.ERROR_LOG_PATH }}
           bin/*-${{ github.event.inputs.release_type }}.apk
           buildozer.spec
         retention-days: 30
