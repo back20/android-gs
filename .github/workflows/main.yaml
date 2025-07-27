@@ -1,4 +1,4 @@
-name: Build Signed APK
+name: 构建 APK
 
 on:
   workflow_dispatch:
@@ -13,24 +13,29 @@ jobs:
     - name: 检出项目代码
       uses: actions/checkout@v3
 
-    - name: Set up Android SDK
+    - name: Setup Android SDK and NDK  # 安装 Android SDK & NDK 25b
       uses: android-actions/setup-android@v2
       with:
         api-level: 33
         build-tools: 33.0.0
-        ndk-version: 21.4.7075529
+        ndk-version: 25.1.8937393
 
     - name: 安装 Python 和依赖
       uses: actions/setup-python@v4
       with:
         python-version: '3.10'
 
-    - name: 安装 Buildozer 和依赖工具
+    - name: 安装 Buildozer 和依赖
       run: |
         sudo apt update
         sudo apt install -y build-essential ccache git zip unzip openjdk-17-jdk
         pip install --upgrade pip
         pip install buildozer cython
+
+    - name: 验证 NDK 版本
+      run: |
+        echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME"
+        $ANDROID_NDK_HOME/ndk-build --version || echo "No ndk-build found"
 
     - name: 解码 Keystore（签名密钥）
       run: echo "$KEYSTORE_BASE64" | base64 --decode > my-release-key.keystore
