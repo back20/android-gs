@@ -6,11 +6,11 @@ package.name = worktimeexporter
 package.domain = org.example.worktime
 version = 1.0
 
-# 项目源代码和资源
+# 源码与资源
 source.dir = .
 source.include_exts = py,kv,json,png,ttf
 
-# 依赖项
+# Python依赖
 requirements = python3,kivy,kivymd,openpyxl
 
 # 屏幕设置
@@ -24,23 +24,15 @@ android.permissions = WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE
 android.api = 33
 android.minapi = 29
 android.ndk = 25b
-android.sdk = 33
 android.enable_legacy_storage = 1
 
-# SDK/NDK 路径（GitHub Actions 使用）
-android.sdk_path = /usr/local/lib/android/sdk
-android.ndk_path = /usr/local/lib/android/sdk/ndk/25.1.8937393
-
-# Gradle 修复兼容依赖
-android.gradle_dependencies = com.android.tools.build:gradle:7.2.2
-
-# 日志等级（0-2，2为详细）
+# 日志等级
 log_level = 2
 
-# 自动接受 SDK 许可协议
+# 自动接受 SDK 协议
 android.accept_sdk_license = True
 
-# 签名配置（通过 GitHub Actions 环境变量替换）
+# APK 签名配置（GitHub Actions 自动注入）
 android.release_keystore = my-release-key.keystore
 android.release_keyalias = WorkTimeKey
 android.release_keystore_password = @KEYSTORE_PASSWORD@
