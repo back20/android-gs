@@ -27,8 +27,8 @@ android.ndk = 21b
 android.enable_legacy_storage = 1
 
 # SDK/NDK 路径（GitHub Actions 使用）
-android.sdk_path = /home/runner/android-sdk
-android.ndk_path = /home/runner/android-sdk/ndk/21.4.7075529
+//android.sdk_path = /home/runner/android-sdk
+//android.ndk_path = /home/runner/android-sdk/ndk/21.4.7075529
 
 # 日志等级（0-2，2为详细）
 log_level = 2
